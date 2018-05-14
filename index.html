@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Dapp">
+    <title>Nebulas DApp</title>
+    <link href="lib/css/main.css" rel="stylesheet">
+    <link href="lib/css/modal.css" rel="stylesheet">
+    <script src="lib/js/danmuku/danmaku.min.js"></script>
+    <script src="lib/js/nebpay/nebPay.js"></script>
+    <script src="lib/js/ukulelejs/dist/uku.js"></script>
+
+</head>
+
+<body uku-application>
+    <div class="main vbox">
+        <div class="header vbox">
+            <h2 class="header-text">Kill Bili</h2>
+            <p>
+               本地下载好的视频，观看时由于不能收发弹幕，无疑缺少了很多乐趣，本DApp就是为此而诞生的
+            </p>
+        </div>
+        <div class="content vbox">
+            <p class="small-text" uku-render="appCtrl.showInstallWalletExtMessage">
+                请安装
+                <a target="_blank" href="https://github.com/ChengOrangeJu/WebExtensionWallet">WebExtensionWallet</a> 来使用本DApp
+            </p>
+            <div class="vbox" uku-render="appCtrl.step === 1">
+                <h3 class="small-text">第一步:选择本地视频文件(目前支持.mp4格式)</h3>
+                <label for="file">
+                    <a class="primary-button" class="pure-button pure-button-primary">打开</a>
+                </label>
+                <input type="file" id="file" uku-onchange="appCtrl.inputFileChange()" hidden> 
+            </div>
+            
+            <div class="vbox" uku-render="appCtrl.step === 2">
+                <h3 class="small-text">第二步:根据视频名称从星云链加载弹幕 (为了便于测试，可以输入test加载合约上已有的测试弹幕)</h3>
+                <div class="hbox"> 
+                    <input type="text" uku-value="appCtrl.videoName" placeholder="请输入视频名称" style="width:400px;height:30px;margin: 20px">
+                    <a class="primary-button" class="pure-button pure-button-primary" uku-onclick="appCtrl.load()">加载弹幕</a>
+                </div>
+            </div>
+            
+            <div uku-render="appCtrl.step !== 1">
+                <video id="my-video" uku-src="appCtrl.videoSrc" width="400px" height="300px" controls="controls" 
+                    uku-onplay="appCtrl.play()"></video>
+            </div>
+            
+            <br>
+            <div class="hbox" uku-render="appCtrl.step === 3">
+                <input type="text" uku-value="appCtrl.comment" style="width:400px;height:30px;margin: 20px">
+                <a class="primary-button" class="pure-button pure-button-primary" uku-onclick="appCtrl.add()">发送弹幕</a>
+            </div>
+            
+            <a class="primary-button" uku-render="appCtrl.step !== 1" class="pure-button pure-button-primary" uku-onclick="appCtrl.back()">上一步</a>
+        </div>
+    </div>
+</body>
+<script>
+    var danmaku;
+    var NebPay = require("nebpay");
+    var nebPay = new NebPay();
+    var dappAddress = 'n22FnCF52ZBr1A39ZJCmgmE3eDvAYSmJW8j';
+    var to = dappAddress;
+    var uku = new Ukulele();
+    var appCtrl = new ApplicationController(uku);
+    uku.registerController('appCtrl', appCtrl);
+    uku.init();
+    uku.addListener(
+        Ukulele.INITIALIZED,
+        function () {
+            appCtrl.init();
+        });
+
+    function ApplicationController(uku) {
+        var self = this;
+        this.step = 1;
+        this.comment = "";
+        this.videoSrc = "";
+        this.videoName = "";
+        this.init = function () {
+            if (typeof (webExtensionWallet) !== "undefined") {
+                this.showInstallWalletExtMessage = false;
+            }
+        };
+        this.inputFileChange = function(e){
+            var file = e.target.files[0];
+            this.videoName = file.name.split('.')[0];
+            var url = URL.createObjectURL(file); 
+            this.videoSrc = url;
+            this.step = 2;
+        };
+
+        this.play = function(){
+            this.step = 3;
+        };
+
+        this.add = function () {
+            var player = document.getElementById('my-video');
+            var palyTime = player.currentTime;
+            var to = dappAddress;
+            var value = "0";
+            var callFunction = "add";
+            var callArgs = JSON.stringify([this.videoName,palyTime,this.comment]);
+            nebPay.call(to, value, callFunction, callArgs, {
+                listener: function (resp) {
+                    if(danmaku){
+                        danmaku.emit(self.comment);
+                    }
+                    self.comment = "";
+                    uku.refresh('appCtrl');
+                }
+            });
+        };
+
+        this.load = function () {
+            var to = dappAddress;
+            var value = "0";
+            var callFunction = "get";
+            var callArgs = JSON.stringify([this.videoName]);;
+            nebPay.simulateCall(to, value, callFunction, callArgs, {
+                listener: function (resp) {
+                    var comments = JSON.parse(resp.result);
+                    if(comments.length === 0){
+                        alert('没有搜到这部视频的弹幕，你有可能成为第一个发弹幕的人');
+                    }else{
+                        alert('加载完成，共'+ comments.length + '条弹幕');
+                    }
+                    var danmukus = batchConvert(comments);
+                    if(danmaku){
+                        danmaku.destroy();
+                        danmaku = null;
+                    }
+                    danmaku = new Danmaku();
+                    danmaku.init({
+                        video: document.getElementById('my-video'),
+                        comments: danmukus
+                    });
+                    danmaku.show();
+                    uku.refresh('appCtrl');
+                }
+            });
+        };
+        this.back = function() {
+            this.step = this.step - 1;
+            var player = document.getElementById('my-video');
+            player.pause();
+        };
+
+        this.showInstallWalletExtMessage = true;
+
+        function convertComment2Danmuku(commentItem){
+            var danmukuItem = {
+                "mode": "rtl",
+                "text": "",
+                "time": 0,
+                "style": {
+                    "color": "#ffffff",
+                    "fontSize": "25px",
+                    "textShadow": "-1px -1px #000, -1px 1px #000, 1px -1px #000, 1px 1px #000"
+                },
+                "canvasStyle": {
+                    "font": "25px sans-serif",
+                    "fillStyle": "#ffffff",
+                    "strokeStyle": "#000",
+                    "lineWidth": 2
+                }
+            };
+            danmukuItem.text = commentItem.comment;
+            danmukuItem.time = commentItem.time;
+            return danmukuItem;
+        }
+
+        function batchConvert(comments){
+            comments.sort(function( a ,b){
+                return a.time - b.time;
+            });
+            var danmukus = []
+            for(var i=0;i<comments.length;i++){
+                danmukus.push(convertComment2Danmuku(comments[i]));
+            }
+            return danmukus;
+        }
+    }
+</script>
+
+</html>
