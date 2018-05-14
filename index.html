@@ -22,7 +22,7 @@
             </p>
         </div>
         <div class="content vbox">
-            <p class="small-text" uku-render="appCtrl.showInstallWalletExtMessage">
+            <p class="small-text" uku-visible="appCtrl.showInstallWalletExtMessage">
                 请安装
                 <a target="_blank" href="https://github.com/ChengOrangeJu/WebExtensionWallet">WebExtensionWallet</a> 来使用本DApp
             </p>
@@ -79,9 +79,11 @@
         this.comment = "";
         this.videoSrc = "";
         this.videoName = "";
+        this.showInstallWalletExtMessage = true;
         this.init = function () {
             if (typeof (webExtensionWallet) !== "undefined") {
                 this.showInstallWalletExtMessage = false;
+                uku.refresh('appCtrl');
             }
         };
         this.inputFileChange = function(e){
@@ -98,16 +100,17 @@
 
         this.add = function () {
             var player = document.getElementById('my-video');
-            var palyTime = player.currentTime;
+            var playTime = player.currentTime;
             var to = dappAddress;
             var value = "0";
             var callFunction = "add";
-            var callArgs = JSON.stringify([this.videoName,palyTime,this.comment]);
+            var callArgs = JSON.stringify([this.videoName,playTime,this.comment]);
+            if(danmaku){
+                var danmakuItem = convertComment2Danmuku({time:playTime+1,comment:this.comment});
+                danmaku.emit(danmakuItem);
+            }
             nebPay.call(to, value, callFunction, callArgs, {
                 listener: function (resp) {
-                    if(danmaku){
-                        danmaku.emit(self.comment);
-                    }
                     self.comment = "";
                     uku.refresh('appCtrl');
                 }
@@ -146,9 +149,10 @@
             this.step = this.step - 1;
             var player = document.getElementById('my-video');
             player.pause();
+            if(this.step === 2){
+                this.load();
+            }
         };
-
-        this.showInstallWalletExtMessage = true;
 
         function convertComment2Danmuku(commentItem){
             var danmukuItem = {
